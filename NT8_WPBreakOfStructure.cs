@@ -140,6 +140,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 			
 			barNumber = CurrentBar;
 			
+			 if (order != null && order.IsBacktestOrder && State == State.Realtime)
+      			order = GetRealtimeOrder(order);
+			
 			if (CurrentBars[0] < 1)
 				return;
 			
@@ -147,7 +150,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 				barCount = 0;
 				Draw.Diamond(this, "FirstBar" + barNumber, true, 0, High[0] + (TickSize * 50), Brushes.AliceBlue);
 			}
-
+			
+			// Seta pela primeira vez as Maximas e Minimas do dia
+			// Desenha um diamante no primeiro candle
 			if (barCount == 2 && IsFirstTickOfBar) {
 				IPoints dhp = new IPoints(barCount, barNumber, High[2]);
 				DailyHighPoints.Push(dhp);
@@ -168,26 +173,33 @@ namespace NinjaTrader.NinjaScript.Strategies
 				IPoints lastDailyHigh = GetLastDailyHighPoint();
 				IPoints lastDailyLow = GetLastDailyLowPoint();
 				
-				if (Close[0] > lastDailyHigh.Price) {
+				// Broke Structure
+				if (Close[0] > lastDailyHigh.Price) {			
 					int barsAgo = lastDailyHigh.BarsAgo(barCount);
 					Draw.Line(this, "HighPoint" + CurrentBar, true, barsAgo, lastDailyHigh.Price, 0, lastDailyHigh.Price, Brushes.Aquamarine, DashStyleHelper.Solid, 1, true);
 					DailyHighPoints.Push(new IPoints(barCount, barNumber, High[0]));
 					
 					int lastMinBarAgo = LowestBar(Low, barsAgo);
 					double lastMinBarAgoPrice = Low[lastMinBarAgo];
-					InternalLowPoints.Push(new IPoints(lastMinBarAgo, 0, lastMinBarAgoPrice));
-					Draw.Line(this, "InternalLowPoint" + CurrentBar, true, lastMinBarAgo, lastMinBarAgoPrice, 0, lastMinBarAgoPrice, Brushes.DarkRed, DashStyleHelper.Dot, 1, true);
+					if (lastMinBarAgo > 2) 
+						InternalLowPoints.Push(new IPoints(lastMinBarAgo, 0, lastMinBarAgoPrice));
+						Draw.Line(this, "InternalLowPoint" + CurrentBar, true, lastMinBarAgo, lastMinBarAgoPrice, 0, lastMinBarAgoPrice, Brushes.DarkRed, DashStyleHelper.Dot, 1, true);
 					
-					if (tstrend.UpTrend.Count > 0 && Close[0] > tstrend.UpTrend[0] && State != State.Historical) {
+					// Update Stops
+					TrailingStop(lastMinBarAgoPrice);
+					
+					if (tstrend.UpTrend.Count > 0 && Close[0] > tstrend.UpTrend[0]) { // && State != State.Historical) {
 						if (Position.MarketPosition == MarketPosition.Flat) {
 							SetProfitTarget(CalculationMode.Ticks, Math.Abs(lastMinBarAgoPrice - lastDailyHigh.Price) * 4);
 							SetStopLoss(CalculationMode.Price, lastMinBarAgoPrice - (TickSize * 2));
-							EnterLong(DefaultQuantity, "Long");
+							order = EnterLong(DefaultQuantity, "Long");
 						}
 					}
 					
 					UpdateHighAndLows(lastDailyHigh, lastDailyLow);
 				} 
+				
+				// Broke Structure
 				else if (Close[0] < lastDailyLow.Price) {
 					int barsAgo = lastDailyLow.BarsAgo(barCount);
 					Draw.Line(this, "LowPoint" + CurrentBar, true, barsAgo, lastDailyLow.Price, 0, lastDailyLow.Price, Brushes.Chocolate, DashStyleHelper.Solid, 1, true);
@@ -195,14 +207,18 @@ namespace NinjaTrader.NinjaScript.Strategies
 					
 					int lastMaxBarAgo = HighestBar(High, barsAgo);
 					double lastMaxBarAgoPrice = High[lastMaxBarAgo];
-					InternalLowPoints.Push(new IPoints(lastMaxBarAgo, 0, lastMaxBarAgoPrice));
-					Draw.Line(this, "InternalHighPoint" + CurrentBar, true, lastMaxBarAgo, lastMaxBarAgoPrice, 0, lastMaxBarAgoPrice, Brushes.DarkGreen, DashStyleHelper.Dot, 1, true);
+					if (lastMaxBarAgo > 2) 
+						InternalLowPoints.Push(new IPoints(lastMaxBarAgo, 0, lastMaxBarAgoPrice));
+						Draw.Line(this, "InternalHighPoint" + CurrentBar, true, lastMaxBarAgo, lastMaxBarAgoPrice, 0, lastMaxBarAgoPrice, Brushes.DarkGreen, DashStyleHelper.Dot, 1, true);
 
-					if (tstrend.DownTrend.Count > 0 && Close[0] < tstrend.DownTrend[0] && State != State.Historical) {
+					// Update Stops
+					TrailingStop(lastMaxBarAgoPrice);
+					
+					if (tstrend.DownTrend.Count > 0 && Close[0] < tstrend.DownTrend[0] ) {// && State != State.Historical) {
 						if (Position.MarketPosition == MarketPosition.Flat) {
 							SetProfitTarget(CalculationMode.Ticks, Math.Abs(lastMaxBarAgoPrice - lastDailyLow.Price) * 4);
 							SetStopLoss(CalculationMode.Price, lastMaxBarAgoPrice + (TickSize * 2));
-							EnterShort(DefaultQuantity, "Short");
+							order = EnterShort(DefaultQuantity, "Short");
 						}
 					}
 					
